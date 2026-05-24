@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vehicle Ordering — Process Analysis</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = {
+    theme: { extend: { colors: {
+      planetary:'#334EAC', universe:'#7096D1', venus:'#BAD6EB',
+      meteor:'#F7F2EB', galaxy:'#081F5C', milkyway:'#FFF9F0', sky:'#D0E3FF'
+    }}}
+  }
+</script>
+<style>
+  body { font-family:'Inter',system-ui,sans-serif; background:#F7F2EB; color:#081F5C; }
+  h1,h2 { font-family:'DM Serif Display',Georgia,serif; }
+  .diagram-scroll::-webkit-scrollbar { height:7px; }
+  .diagram-scroll::-webkit-scrollbar-track { background:#F7F2EB; border-radius:4px; }
+  .diagram-scroll::-webkit-scrollbar-thumb { background:#7096D1; border-radius:4px; }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+  .fade-up { animation:fadeUp 0.5s cubic-bezier(0.22,1,0.36,1) forwards; }
+  .stat-card { transition:transform 0.2s cubic-bezier(0.22,1,0.36,1),box-shadow 0.2s ease; }
+  .stat-card:hover { transform:translateY(-4px); box-shadow:0 14px 36px -8px rgba(8,31,92,0.2),0 2px 8px -2px rgba(8,31,92,0.08); }
+  tbody tr { transition:background-color 0.12s ease,transform 0.15s cubic-bezier(0.22,1,0.36,1); }
+  tbody tr:hover { background-color:#D8EAFF !important; transform:translateX(3px); }
+  .badge { display:inline-flex;align-items:center;padding:2px 9px;border-radius:99px;font-size:11px;font-weight:600;letter-spacing:0.03em;white-space:nowrap; }
+  .b-red    { background:#ffc9c9;color:#7b1f1f;border:1px solid #c92a2a; }
+  .b-orange { background:#ffe8cc;color:#7c3c00;border:1px solid #e67700; }
+  .b-yellow { background:#fff3bf;color:#6b5000;border:1px solid #d9a800; }
+  .b-dead   { background:#fff5f5;color:#7b1f1f;border:1px dashed #c92a2a; }
+  .b-grey   { background:#e9ecef;color:#2a2d30;border:1px solid #adb5bd; }
+  .b-gap    { background:#dbeafe;color:#1e3a8a;border:1px solid #7096D1; }
+  .b-auto   { background:#d3f9d8;color:#1a5c2a;border:1px solid #2f9e44; }
+  .b-ai     { background:#e0d7ff;color:#3b1f7a;border:1px solid #7950f2; }
+  .b-human  { background:#dbeafe;color:#1e3a8a;border:1px solid #1d4ed8; }
+  .snum { font-family:'DM Serif Display',serif;font-size:52px;line-height:1;color:#D0E3FF;font-style:italic;flex-shrink:0; }
+
+  /* ── TAB STYLES ── */
+  .tab-bar { position:sticky;top:0;z-index:100;background:#FFF9F0;border-bottom:1px solid #D0E3FF;box-shadow:0 2px 12px -4px rgba(8,31,92,0.1); }
+  .tab-btn { display:inline-flex;align-items:center;gap:8px;padding:14px 28px;font-size:14px;font-weight:600;color:#7096D1;border-bottom:3px solid transparent;cursor:pointer;transition:color 0.15s ease,border-color 0.15s ease;background:none;border-left:none;border-right:none;border-top:none;letter-spacing:-0.01em; }
+  .tab-btn:hover { color:#334EAC; }
+  .tab-btn.active { color:#081F5C;border-bottom-color:#334EAC; }
+  .tab-badge { font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px;letter-spacing:0.04em; }
+  code { font-family:'Courier New',monospace; }
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<header style="background:linear-gradient(135deg,#081F5C 0%,#334EAC 100%);padding:40px 48px 52px;position:relative;overflow:hidden;">
+  <svg style="position:absolute;inset:0;width:100%;height:100%;opacity:0.05;pointer-events:none;" xmlns="http://www.w3.org/2000/svg">
+    <filter id="gr"><feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="4" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>
+    <rect width="100%" height="100%" filter="url(#gr)"/>
+  </svg>
+  <div style="position:relative;max-width:1400px;margin:0 auto;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+      <span style="background:#BAD6EB;color:#081F5C;font-size:11px;font-weight:700;letter-spacing:0.08em;padding:4px 10px;border-radius:4px;text-transform:uppercase;">AutoVault · Process Intelligence</span>
+      <span style="color:#7096D1;font-size:12px;font-weight:500;">Vehicle Ordering · May 2026</span>
+    </div>
+    <h1 style="font-size:clamp(26px,4vw,48px);color:#fff;letter-spacing:-0.025em;margin-bottom:8px;line-height:1.08;">Vehicle Ordering Process Analysis</h1>
+    <p style="color:#BAD6EB;font-size:15px;max-width:620px;line-height:1.75;">Current state assessment and AI-first future state design — 24-step manual process transformed into an 11-step automated workflow.</p>
+  </div>
+</header>
+
+<!-- ── TAB NAV ── -->
+<div class="tab-bar">
+  <div style="max-width:1400px;margin:0 auto;padding:0 32px;display:flex;align-items:center;gap:0;">
+    <button class="tab-btn active" id="btnCurrent" onclick="switchTab('current')">
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="3" width="13" height="10" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M1 6h13" stroke="currentColor" stroke-width="1.5"/></svg>
+      Current State
+      <span class="tab-badge" style="background:#ffc9c9;color:#7b1f1f;">24 steps</span>
+    </button>
+    <button class="tab-btn" id="btnFuture" onclick="switchTab('future')">
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 1L9.18 5.5H14L10.41 8.27L11.85 13L7.5 10.27L3.15 13L4.59 8.27L1 5.5H5.82L7.5 1Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+      Future State
+      <span class="tab-badge" style="background:#d3f9d8;color:#1a5c2a;">11 steps</span>
+    </button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- TAB 1: CURRENT STATE                                          -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div id="tabCurrent">
+<main style="max-width:1400px;margin:0 auto;padding:0 32px 96px;">
+
+  <!-- Stat Cards -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;margin-top:32px;margin-bottom:56px;">
+    <div class="stat-card" style="background:#FFF9F0;border-radius:14px;padding:24px 20px;box-shadow:0 4px 20px -4px rgba(8,31,92,0.12),0 1px 4px rgba(8,31,92,0.06);border-top:3px solid #334EAC;">
+      <div style="font-size:40px;font-family:'DM Serif Display',serif;color:#334EAC;line-height:1;">24</div>
+      <div style="font-size:13px;font-weight:600;color:#081F5C;margin-top:5px;">Process Steps</div>
+      <div style="font-size:12px;color:#7096D1;margin-top:2px;">Current state</div>
+    </div>
+    <div class="stat-card" style="background:#FFF9F0;border-radius:14px;padding:24px 20px;box-shadow:0 4px 20px -4px rgba(8,31,92,0.12),0 1px 4px rgba(8,31,92,0.06);border-top:3px solid #c92a2a;">
+      <div style="font-size:40px;font-family:'DM Serif Display',serif;color:#c92a2a;line-height:1;">5+</div>
+      <div style="font-size:13px;font-weight:600;color:#081F5C;margin-top:5px;">Customer Visits</div>
+      <div style="font-size:12px;color:#7096D1;margin-top:2px;">Required in-person</div>
+    </div>
+    <div class="stat-card" style="background:#FFF9F0;border-radius:14px;padding:24px 20px;box-shadow:0 4px 20px -4px rgba(8,31,92,0.12),0 1px 4px rgba(8,31,92,0.06);border-top:3px solid #c92a2a;">
+      <div style="font-size:40px;font-family:'DM Serif Display',serif;color:#c92a2a;line-height:1;">3×</div>
+      <div style="font-size:13px;font-weight:600;color:#081F5C;margin-top:5px;">GDPR Violations</div>
+      <div style="font-size:12px;color:#7096D1;margin-top:2px;">Steps 4, 13, 21</div>
+    </div>
+    <div class="stat-card" style="background:#FFF9F0;border-radius:14px;padding:24px 20px;box-shadow:0 4px 20px -4px rgba(8,31,92,0.12),0 1px 4px rgba(8,31,92,0.06);border-top:3px solid #d9a800;">
+      <div style="font-size:40px;font-family:'DM Serif Display',serif;color:#d9a800;line-height:1;">~2%</div>
+      <div style="font-size:13px;font-weight:600;color:#081F5C;margin-top:5px;">Feedback Captured</div>
+      <div style="font-size:12px;color:#7096D1;margin-top:2px;">Postal channel (Step 24)</div>
+    </div>
+    <div class="stat-card" style="background:#FFF9F0;border-radius:14px;padding:24px 20px;box-shadow:0 4px 20px -4px rgba(8,31,92,0.12),0 1px 4px rgba(8,31,92,0.06);border-top:3px solid #e67700;">
+      <div style="font-size:40px;font-family:'DM Serif Display',serif;color:#e67700;line-height:1;">2×</div>
+      <div style="font-size:13px;font-weight:600;color:#081F5C;margin-top:5px;">Dual Invoicing</div>
+      <div style="font-size:12px;color:#7096D1;margin-top:2px;">Steps 8 &amp; 20, both manual</div>
+    </div>
+    <div class="stat-card" style="background:linear-gradient(135deg,#081F5C,#334EAC);border-radius:14px;padding:24px 20px;box-shadow:0 8px 28px -6px rgba(8,31,92,0.35);">
+      <div style="font-size:40px;font-family:'DM Serif Display',serif;color:#fff;line-height:1;">→11</div>
+      <div style="font-size:13px;font-weight:600;color:#BAD6EB;margin-top:5px;">Target State Steps</div>
+      <div style="font-size:12px;color:#7096D1;margin-top:2px;">Saves 13 steps &amp; 4 visits</div>
+    </div>
+  </div>
+
+  <!-- Section 1: Swim Lane -->
+  <section style="margin-bottom:72px;">
+    <div style="display:flex;align-items:baseline;gap:18px;margin-bottom:20px;">
+      <span class="snum">01</span>
+      <div>
+        <h2 style="font-size:26px;color:#081F5C;letter-spacing:-0.02em;line-height:1.1;">Current State Swim Lane Diagram</h2>
+        <p style="font-size:13px;color:#7096D1;margin-top:4px;">Scroll right to view all 24 steps · Step 10b is a dead-end branch below the main flow</p>
+      </div>
+    </div>
+    <div class="diagram-scroll" style="overflow-x:auto;background:#FFF9F0;border-radius:16px;padding:20px 20px 14px;box-shadow:0 4px 24px -6px rgba(8,31,92,0.12),0 1px 4px rgba(8,31,92,0.06);border:1px solid #D0E3FF;">
+      <svg id="svgCurrent" xmlns="http://www.w3.org/2000/svg" style="display:block;"></svg>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-top:14px;padding:14px 18px;background:#FFF9F0;border-radius:10px;border:1px solid #D0E3FF;">
+      <span style="font-size:11px;font-weight:700;color:#7096D1;text-transform:uppercase;letter-spacing:0.06em;">Legend</span>
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;"><div style="width:13px;height:13px;border-radius:2px;background:#ffc9c9;border:2px solid #c92a2a;"></div><span><b>RED</b> — GDPR Violation / Excessive Visit</span></div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;"><div style="width:13px;height:13px;border-radius:2px;background:#ffe8cc;border:2px solid #e67700;"></div><span><b>ORANGE</b> — Disconnected Inventory / Dual Invoicing</span></div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;"><div style="width:13px;height:13px;border-radius:2px;background:#fff3bf;border:2px solid #d9a800;"></div><span><b>YELLOW</b> — Paper-Based / Low-Value Channel</span></div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;"><div style="width:13px;height:13px;border-radius:2px;background:#fff5f5;border:2px dashed #c92a2a;"></div><span><b>DASHED RED</b> — Dead End</span></div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;"><div style="width:13px;height:13px;border-radius:2px;background:#e9ecef;border:1px solid #adb5bd;"></div><span><b>GREY</b> — Standard Step</span></div>
+    </div>
+  </section>
+
+  <!-- Section 2: Pain Point Table -->
+  <section style="margin-bottom:72px;">
+    <div style="display:flex;align-items:baseline;gap:18px;margin-bottom:20px;">
+      <span class="snum">02</span>
+      <div>
+        <h2 style="font-size:26px;color:#081F5C;letter-spacing:-0.02em;">Pain Point Analysis</h2>
+        <p style="font-size:13px;color:#7096D1;margin-top:4px;">Every step assessed for friction, risk, and compliance exposure</p>
+      </div>
+    </div>
+    <div style="background:#FFF9F0;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px -6px rgba(8,31,92,0.12),0 1px 4px rgba(8,31,92,0.06);border:1px solid #D0E3FF;">
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:860px;">
+          <thead>
+            <tr style="background:#081F5C;color:#fff;">
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;width:48px;">Step</th>
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;width:80px;">Actor</th>
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;width:140px;">Category</th>
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;">Issue / Description</th>
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;width:200px;">Impact</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyPain"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 3: Dead Ends -->
+  <section style="margin-bottom:72px;">
+    <div style="display:flex;align-items:baseline;gap:18px;margin-bottom:20px;">
+      <span class="snum">03</span>
+      <div>
+        <h2 style="font-size:26px;color:#081F5C;letter-spacing:-0.02em;">Dead Ends &amp; Undefined Paths</h2>
+        <p style="font-size:13px;color:#7096D1;margin-top:4px;">Steps where the process has no defined next action</p>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:20px;" id="deadEndCards"></div>
+  </section>
+
+  <!-- Section 4: Automation Matrix -->
+  <section style="margin-bottom:72px;">
+    <div style="display:flex;align-items:baseline;gap:18px;margin-bottom:20px;">
+      <span class="snum">04</span>
+      <div>
+        <h2 style="font-size:26px;color:#081F5C;letter-spacing:-0.02em;">Automation Opportunity Matrix</h2>
+        <p style="font-size:13px;color:#7096D1;margin-top:4px;">Each friction point mapped to its AutoVault AI-first replacement</p>
+      </div>
+    </div>
+    <div style="background:#FFF9F0;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px -6px rgba(8,31,92,0.12),0 1px 4px rgba(8,31,92,0.06);border:1px solid #D0E3FF;">
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:800px;">
+          <thead>
+            <tr style="background:#334EAC;color:#fff;">
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;width:140px;">Current Step(s)</th>
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;">Problem</th>
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;width:220px;">Target Replacement</th>
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;width:190px;">Tool</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyAuto"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 5: Before / After -->
+  <section>
+    <div style="display:flex;align-items:baseline;gap:18px;margin-bottom:20px;">
+      <span class="snum">05</span>
+      <div>
+        <h2 style="font-size:26px;color:#081F5C;letter-spacing:-0.02em;">Before vs. After</h2>
+        <p style="font-size:13px;color:#7096D1;margin-top:4px;">The transformation case for AutoVault AI-first ordering</p>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+      <div style="background:#FFF9F0;border-radius:16px;padding:32px;border:1px solid #D0E3FF;box-shadow:0 4px 16px -4px rgba(8,31,92,0.08);">
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#c92a2a;margin-bottom:18px;">&#9888; Current State</div>
+        <div id="beforeRows" style="display:flex;flex-direction:column;gap:10px;"></div>
+      </div>
+      <div style="background:linear-gradient(145deg,#081F5C,#334EAC);border-radius:16px;padding:32px;box-shadow:0 10px 36px -8px rgba(8,31,92,0.35);">
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#BAD6EB;margin-bottom:18px;">&#10003; Target State (AutoVault AI)</div>
+        <div id="afterRows" style="display:flex;flex-direction:column;gap:10px;"></div>
+      </div>
+    </div>
+  </section>
+
+</main>
+</div><!-- /tabCurrent -->
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- TAB 2: FUTURE STATE                                           -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div id="tabFuture" style="display:none;">
+<main style="max-width:1400px;margin:0 auto;padding:0 32px 96px;">
+
+  <!-- Future Stat Cards -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;margin-top:32px;margin-bottom:56px;">
+    <div class="stat-card" style="background:#FFF9F0;border-radius:14px;padding:24px 20px;box-shadow:0 4px 20px -4px rgba(8,31,92,0.12),0 1px 4px rgba(8,31,92,0.06);border-top:3px solid #2f9e44;">
+      <div style="font-size:40px;font-family:'DM Serif Display',serif;color:#2f9e44;line-height:1;">11</div>
+      <div style="font-size:13px;font-weight:600;color:#081F5C;margin-top:5px;">Process Steps</div>
+      <div style="font-size:12px;color:#7096D1;margin-top:2px;">↓ 54% reduction</div>
+    </div>
+    <div class="stat-card" style="background:#FFF9F0;border-radius:14px;padding:24px 20px;box-shadow:0 4px 20px -4px rgba(8,31,92,0.12),0 1px 4px rgba(8,31,92,0.06);border-top:3px solid #2f9e44;">
+      <div style="font-size:40px;font-family:'DM Serif Display',serif;color:#2f9e44;line-height:1;">1</div>
+      <div style="font-size:13px;font-weight:600;color:#081F5C;margin-top:5px;">Customer Visit</div>
+      <div style="font-size:12px;color:#7096D1;margin-top:2px;">Delivery only</div>
+    </div>
+    <div class="stat-card" style="background:#FFF9F0;border-radius:14px;padding:24px 20px;box-shadow:0 4px 20px -4px rgba(8,31,92,0.12),0 1px 4px rgba(8,31,92,0.06);border-top:3px solid #2f9e44;">
+      <div style="font-size:40px;font-family:'DM Serif Display',serif;color:#2f9e44;line-height:1;">0</div>
+      <div style="font-size:13px;font-weight:600;color:#081F5C;margin-top:5px;">GDPR Violations</div>
+      <div style="font-size:12px;color:#7096D1;margin-top:2px;">Fresh docs per order</div>
+    </div>
+    <div class="stat-card" style="background:#FFF9F0;border-radius:14px;padding:24px 20px;box-shadow:0 4px 20px -4px rgba(8,31,92,0.12),0 1px 4px rgba(8,31,92,0.06);border-top:3px solid #7950f2;">
+      <div style="font-size:40px;font-family:'DM Serif Display',serif;color:#7950f2;line-height:1;">8/11</div>
+      <div style="font-size:13px;font-weight:600;color:#081F5C;margin-top:5px;">Steps Automated</div>
+      <div style="font-size:12px;color:#7096D1;margin-top:2px;">73% automation rate</div>
+    </div>
+    <div class="stat-card" style="background:#FFF9F0;border-radius:14px;padding:24px 20px;box-shadow:0 4px 20px -4px rgba(8,31,92,0.12),0 1px 4px rgba(8,31,92,0.06);border-top:3px solid #2f9e44;">
+      <div style="font-size:40px;font-family:'DM Serif Display',serif;color:#2f9e44;line-height:1;">NPS</div>
+      <div style="font-size:13px;font-weight:600;color:#081F5C;margin-top:5px;">Feedback Loop</div>
+      <div style="font-size:12px;color:#7096D1;margin-top:2px;">vs. ~2% postal</div>
+    </div>
+    <div class="stat-card" style="background:linear-gradient(135deg,#1a5c2a,#2f9e44);border-radius:14px;padding:24px 20px;box-shadow:0 8px 28px -6px rgba(47,158,68,0.35);">
+      <div style="font-size:40px;font-family:'DM Serif Display',serif;color:#fff;line-height:1;">−13</div>
+      <div style="font-size:13px;font-weight:600;color:#d3f9d8;margin-top:5px;">Steps Eliminated</div>
+      <div style="font-size:12px;color:#8ce99a;margin-top:2px;">Including all paper steps</div>
+    </div>
+  </div>
+
+  <!-- Section F1: Future State Diagram -->
+  <section style="margin-bottom:72px;">
+    <div style="display:flex;align-items:baseline;gap:18px;margin-bottom:20px;">
+      <span class="snum" style="color:#d3f9d8;">F1</span>
+      <div>
+        <h2 style="font-size:26px;color:#081F5C;letter-spacing:-0.02em;line-height:1.1;">Future State Swim Lane Diagram</h2>
+        <p style="font-size:13px;color:#7096D1;margin-top:4px;">11-step AI-first process · 8 automated · 1 customer visit · 0 paper</p>
+      </div>
+    </div>
+    <div class="diagram-scroll" style="overflow-x:auto;background:#FFF9F0;border-radius:16px;padding:20px 20px 14px;box-shadow:0 4px 24px -6px rgba(8,31,92,0.12),0 1px 4px rgba(8,31,92,0.06);border:1px solid #D0E3FF;">
+      <svg id="svgFuture" xmlns="http://www.w3.org/2000/svg" style="display:block;"></svg>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-top:14px;padding:14px 18px;background:#FFF9F0;border-radius:10px;border:1px solid #D0E3FF;">
+      <span style="font-size:11px;font-weight:700;color:#7096D1;text-transform:uppercase;letter-spacing:0.06em;">Legend</span>
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;"><div style="width:13px;height:13px;border-radius:2px;background:#d3f9d8;border:2px solid #2f9e44;"></div><span><b>GREEN</b> — Fully Automated Step</span></div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;"><div style="width:13px;height:13px;border-radius:2px;background:#e0d7ff;border:2px solid #7950f2;"></div><span><b>PURPLE</b> — AI-Generated (Claude API)</span></div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;"><div style="width:13px;height:13px;border-radius:2px;background:#dbeafe;border:2px solid #1d4ed8;"></div><span><b>BLUE</b> — Customer Touchpoint</span></div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;"><div style="width:13px;height:13px;border-radius:2px;background:#f3e8ff;border:1px solid #7e22ce;"></div><span><b>LAVENDER</b> — SC/Legal (still required)</span></div>
+    </div>
+  </section>
+
+  <!-- Section F2: Step-by-Step Breakdown -->
+  <section style="margin-bottom:72px;">
+    <div style="display:flex;align-items:baseline;gap:18px;margin-bottom:20px;">
+      <span class="snum" style="color:#d3f9d8;">F2</span>
+      <div>
+        <h2 style="font-size:26px;color:#081F5C;letter-spacing:-0.02em;">Step-by-Step Breakdown</h2>
+        <p style="font-size:13px;color:#7096D1;margin-top:4px;">Each future-state step with trigger, tool, and what it replaces</p>
+      </div>
+    </div>
+    <div style="background:#FFF9F0;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px -6px rgba(8,31,92,0.12),0 1px 4px rgba(8,31,92,0.06);border:1px solid #D0E3FF;">
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:860px;">
+          <thead>
+            <tr style="background:#1a5c2a;color:#fff;">
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;width:48px;">Step</th>
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;width:80px;">Actor</th>
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;width:110px;">Type</th>
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;">Action &amp; Trigger</th>
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;width:180px;">Tool / Method</th>
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;width:160px;">Replaces</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyFuture"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section F3: What Was Eliminated -->
+  <section style="margin-bottom:72px;">
+    <div style="display:flex;align-items:baseline;gap:18px;margin-bottom:20px;">
+      <span class="snum" style="color:#d3f9d8;">F3</span>
+      <div>
+        <h2 style="font-size:26px;color:#081F5C;letter-spacing:-0.02em;">What Was Eliminated</h2>
+        <p style="font-size:13px;color:#7096D1;margin-top:4px;">13 steps removed — categorised by root cause</p>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:20px;" id="eliminatedCards"></div>
+  </section>
+
+  <!-- Section F4: Error Handling -->
+  <section>
+    <div style="display:flex;align-items:baseline;gap:18px;margin-bottom:20px;">
+      <span class="snum" style="color:#d3f9d8;">F4</span>
+      <div>
+        <h2 style="font-size:26px;color:#081F5C;letter-spacing:-0.02em;">Error Handling &amp; Escalation</h2>
+        <p style="font-size:13px;color:#7096D1;margin-top:4px;">Every dead end replaced with a defined resolution path</p>
+      </div>
+    </div>
+    <div style="background:#FFF9F0;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px -6px rgba(8,31,92,0.12),0 1px 4px rgba(8,31,92,0.06);border:1px solid #D0E3FF;">
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:740px;">
+          <thead>
+            <tr style="background:#334EAC;color:#fff;">
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;width:180px;">Error Scenario</th>
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;">Defined Action</th>
+              <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;width:160px;">Previously</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyErrors"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+</div><!-- /tabFuture -->
+
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- SCRIPTS                                                        -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<script>
+
+// ── TAB SWITCHING ──────────────────────────────────────────────────
+let futureDiagramBuilt = false;
+function switchTab(tab) {
+  document.getElementById('tabCurrent').style.display = tab === 'current' ? 'block' : 'none';
+  document.getElementById('tabFuture').style.display  = tab === 'future'  ? 'block' : 'none';
+  document.getElementById('btnCurrent').className = 'tab-btn' + (tab === 'current' ? ' active' : '');
+  document.getElementById('btnFuture').className  = 'tab-btn' + (tab === 'future'  ? ' active' : '');
+  if (tab === 'future' && !futureDiagramBuilt) { buildFutureDiagram(); futureDiagramBuilt = true; }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CURRENT STATE SWIM LANE
+// ═══════════════════════════════════════════════════════════════════
+const HW=110, SW=105, SH=66, CW=138, LH=138, TP=44;
+const CLANES = {
+  customer: { label:'Customer',        yTop:TP,         color:'#1d4ed8', bg:'#dbeafe' },
+  staff:    { label:'Staff',           yTop:TP+LH,      color:'#b45309', bg:'#fef9c3' },
+  sclegal:  { label:'Supply Chain\n/ Legal', yTop:TP+LH*2, color:'#7e22ce', bg:'#f3e8ff' },
+};
+const CCAT = {
+  grey:    {s:'#6b7280',f:'#e9ecef',t:'#212529',d:false,sw:1},
+  orange:  {s:'#e67700',f:'#ffe8cc',t:'#7c3c00',d:false,sw:2},
+  red:     {s:'#c92a2a',f:'#ffc9c9',t:'#7b1f1f',d:false,sw:2},
+  yellow:  {s:'#d9a800',f:'#fff3bf',t:'#6b5000',d:false,sw:2},
+  deadend: {s:'#c92a2a',f:'#fff5f5',t:'#7b1f1f',d:true, sw:2},
+};
+const CSTEPS = [
+  {col:1, id:'1',   lane:'customer',cat:'grey',   lines:['1. Browse','Printed Catalog']},
+  {col:2, id:'2',   lane:'staff',   cat:'orange', lines:['2. Walk to','Garage (Stock)']},
+  {col:3, id:'3',   lane:'staff',   cat:'orange', lines:['3. Check Excel','Database']},
+  {col:4, id:'4',   lane:'staff',   cat:'red',    lines:['4. Edit Prior','Customer Word','[GDPR]']},
+  {col:5, id:'5',   lane:'staff',   cat:'grey',   lines:['5. Print +','Stamp Order']},
+  {col:6, id:'6',   lane:'sclegal', cat:'grey',   lines:['6. Vehicle','Manufactured']},
+  {col:7, id:'7',   lane:'customer',cat:'grey',   lines:['7. First','Payment [?]']},
+  {col:8, id:'8',   lane:'staff',   cat:'orange', lines:['8. Create','Invoice (Excel)']},
+  {col:9, id:'9',   lane:'staff',   cat:'grey',   lines:['9. Email','Customer to Visit']},
+  {col:10,id:'10',  lane:'customer',cat:'red',    lines:['10. Visit Sign','Contract [In-Person]']},
+  {col:10,id:'10b', lane:'sclegal', cat:'deadend',lines:['10b. Dispute','Resolution','[DEAD END]']},
+  {col:11,id:'11',  lane:'customer',cat:'grey',   lines:['11. Bring Vehicle','for Trade-In']},
+  {col:12,id:'12',  lane:'staff',   cat:'grey',   lines:['12. Trade-In','Assessment']},
+  {col:13,id:'13',  lane:'staff',   cat:'red',    lines:['13. Edit Prior','Customer Word','[GDPR]']},
+  {col:14,id:'14',  lane:'customer',cat:'red',    lines:['14. Visit Collect','Trade-In Docs']},
+  {col:15,id:'15',  lane:'customer',cat:'red',    lines:['15. Return 2 Days','Later to Sign']},
+  {col:16,id:'16',  lane:'staff',   cat:'yellow', lines:['16. Scan Docs','(Static Images)']},
+  {col:17,id:'17',  lane:'staff',   cat:'yellow', lines:['17. Print + Stamp','+ File Physically']},
+  {col:18,id:'18',  lane:'staff',   cat:'grey',   lines:['18. Phone Confirm','Delivery Date']},
+  {col:19,id:'19',  lane:'staff',   cat:'grey',   lines:['19. Final','Payment [?]']},
+  {col:20,id:'20',  lane:'staff',   cat:'orange', lines:['20. Second Excel','Invoice']},
+  {col:21,id:'21',  lane:'staff',   cat:'red',    lines:['21. Edit Prior','Customer Word','[GDPR]']},
+  {col:22,id:'22',  lane:'staff',   cat:'grey',   lines:['22. Vehicle','Delivered']},
+  {col:23,id:'23',  lane:'staff',   cat:'grey',   lines:['23. Post-Delivery','Support']},
+  {col:24,id:'24',  lane:'staff',   cat:'yellow', lines:['24. Postal Feedback','[~2% response]']},
+];
+const CCONNS = [
+  ['1','2'],['2','3'],['3','4'],['4','5'],['5','6'],['6','7'],
+  ['7','8'],['8','9'],['9','10'],['10','10b'],['10','11'],
+  ['11','12'],['12','13'],['13','14'],['14','15'],['15','16'],
+  ['16','17'],['17','18'],['18','19'],['19','20'],['20','21'],
+  ['21','22'],['22','23'],['23','24'],
+];
+function csx(col){return HW+(col-1)*CW;}
+function cly(lane){return CLANES[lane].yTop;}
+function ccy(lane){return cly(lane)+LH/2;}
+function crect(s){return{x:csx(s.col),y:cly(s.lane)+(LH-SH)/2,cx:csx(s.col)+SW/2,cy:ccy(s.lane)};}
+function buildCurrentDiagram(){
+  const W=HW+24*CW+24, H=TP+LH*3+12;
+  const svg=document.getElementById('svgCurrent');
+  svg.setAttribute('width',W); svg.setAttribute('height',H);
+  let h=`<defs>
+    <marker id="car" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#6b7280"/></marker>
+    <marker id="card" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#c92a2a"/></marker>
+  </defs>`;
+  h+=`<rect x="0" y="0" width="${W}" height="${TP}" fill="#081F5C"/>`;
+  h+=`<text x="${W/2}" y="27" text-anchor="middle" fill="white" font-size="13" font-family="'DM Serif Display',serif" font-style="italic">Current State Process Map — Vehicle Ordering (24 Steps)</text>`;
+  Object.entries(CLANES).forEach(([k,lane])=>{
+    h+=`<rect x="${HW}" y="${lane.yTop}" width="${W-HW}" height="${LH}" fill="${lane.bg}" stroke="${lane.color}" stroke-width="0.4" opacity="0.5"/>`;
+    h+=`<rect x="0" y="${lane.yTop}" width="${HW}" height="${LH}" fill="${lane.color}"/>`;
+    const ls=lane.label.split('\n'), midY=lane.yTop+LH/2;
+    ls.forEach((l,i)=>{ const ty=midY-(ls.length-1)*7+i*14+4; h+=`<text x="${HW/2}" y="${ty}" text-anchor="middle" fill="white" font-size="10.5" font-family="Inter,sans-serif" font-weight="600">${l}</text>`; });
+  });
+  for(let c=1;c<=24;c++){const lx=HW+(c-1)*CW; h+=`<line x1="${lx}" y1="${TP}" x2="${lx}" y2="${H-4}" stroke="#CBD5E1" stroke-width="0.5" stroke-dasharray="3 4" opacity="0.5"/>`;}
+  const sm={};CSTEPS.forEach(s=>{sm[s.id]=s;});
+  CCONNS.forEach(([fId,tId])=>{
+    const f=sm[fId],t=sm[tId];if(!f||!t)return;
+    const fr=crect(f),tr=crect(t);
+    const isDead=tId==='10b';
+    const col=isDead?'#c92a2a':'#6b7280';
+    const dash=isDead?'5 3':'none';
+    const mrk=isDead?'url(#card)':'url(#car)';
+    let d='';
+    if(f.col===t.col&&f.lane!==t.lane){d=`M${fr.cx},${fr.y+SH} L${fr.cx},${tr.y}`;}
+    else if(f.lane===t.lane){d=`M${fr.x+SW},${fr.cy} L${tr.x},${tr.cy}`;}
+    else{const x1=fr.x+SW,y1=fr.cy,x2=tr.x,y2=tr.cy,mx=x1+(x2-x1)*0.5;d=`M${x1},${y1} L${mx},${y1} L${mx},${y2} L${x2},${y2}`;}
+    h+=`<path d="${d}" fill="none" stroke="${col}" stroke-width="1.8" stroke-dasharray="${dash}" marker-end="${mrk}"/>`;
+  });
+  CSTEPS.forEach(s=>{
+    const r=crect(s),c=CCAT[s.cat];
+    const dash=c.d?'stroke-dasharray="5 3"':'';
+    h+=`<rect x="${r.x}" y="${r.y}" width="${SW}" height="${SH}" rx="7" fill="${c.f}" stroke="${c.s}" stroke-width="${c.sw}" ${dash}/>`;
+    const lh=12,tot=s.lines.length*lh;
+    s.lines.forEach((l,i)=>{const ty=r.cy-tot/2+i*lh+9;h+=`<text x="${r.cx}" y="${ty}" text-anchor="middle" fill="${c.t}" font-size="9" font-family="Inter,sans-serif" font-weight="${i===0?'700':'400'}">${l}</text>`;});
+  });
+  svg.innerHTML=h;
+}
+buildCurrentDiagram();
+
+// ═══════════════════════════════════════════════════════════════════
+// FUTURE STATE SWIM LANE
+// ═══════════════════════════════════════════════════════════════════
+const FHW=120, FSW=130, FSH=72, FCW=175, FLH=148, FTP=44;
+const FLANES = {
+  customer: { label:'Customer',          yTop:FTP,          color:'#1d4ed8', bg:'#dbeafe' },
+  system:   { label:'AutoVault\nSystem', yTop:FTP+FLH,      color:'#334EAC', bg:'#EEF2FF' },
+  sclegal:  { label:'Supply Chain\n/ Legal', yTop:FTP+FLH*2, color:'#7e22ce', bg:'#f3e8ff' },
+};
+const FCAT = {
+  auto:   {s:'#2f9e44',f:'#d3f9d8',t:'#1a5c2a',sw:2},
+  ai:     {s:'#7950f2',f:'#e0d7ff',t:'#3b1f7a',sw:2},
+  human:  {s:'#1d4ed8',f:'#dbeafe',t:'#1e3a8a',sw:2},
+  sclegal:{s:'#7e22ce',f:'#f3e8ff',t:'#4a1882',sw:1},
+};
+const FSTEPS = [
+  {col:1, id:'f1',  lane:'customer',cat:'human',  lines:['1. Submit Order','via Portal']},
+  {col:2, id:'f2',  lane:'system',  cat:'auto',   lines:['2. Reserve','Inventory']},
+  {col:3, id:'f3',  lane:'system',  cat:'auto',   lines:['3. Order Confirmation','Email']},
+  {col:4, id:'f4',  lane:'system',  cat:'auto',   lines:['4. Generate &','Send Invoice #1']},
+  {col:5, id:'f5',  lane:'system',  cat:'ai',     lines:['5. Generate','Digital Contract','(Claude API)']},
+  {col:6, id:'f6',  lane:'customer',cat:'human',  lines:['6. Sign Contract','(e-Signature)']},
+  {col:7, id:'f7',  lane:'sclegal', cat:'sclegal',lines:['7. Vehicle Sourcing','/ Manufacturing']},
+  {col:8, id:'f8',  lane:'system',  cat:'auto',   lines:['8. Schedule Delivery','+ Notify Customer']},
+  {col:9, id:'f9',  lane:'system',  cat:'auto',   lines:['9. Final Payment','+ Invoice #2']},
+  {col:10,id:'f10', lane:'customer',cat:'human',  lines:['10. Delivery &','Handover','(Sign on Tablet)']},
+  {col:11,id:'f11', lane:'system',  cat:'auto',   lines:['11. NPS Feedback','Email (48h)']},
+];
+const FCONNS = [
+  ['f1','f2'],['f2','f3'],['f3','f4'],['f4','f5'],['f5','f6'],
+  ['f6','f7'],['f7','f8'],['f8','f9'],['f9','f10'],['f10','f11'],
+];
+function fsx(col){return FHW+(col-1)*FCW;}
+function fly(lane){return FLANES[lane].yTop;}
+function fcy(lane){return fly(lane)+FLH/2;}
+function frect(s){return{x:fsx(s.col),y:fly(s.lane)+(FLH-FSH)/2,cx:fsx(s.col)+FSW/2,cy:fcy(s.lane)};}
+function buildFutureDiagram(){
+  const W=FHW+11*FCW+24, H=FTP+FLH*3+12;
+  const svg=document.getElementById('svgFuture');
+  svg.setAttribute('width',W); svg.setAttribute('height',H);
+  let h=`<defs>
+    <marker id="far" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#2f9e44"/></marker>
+  </defs>`;
+  h+=`<rect x="0" y="0" width="${W}" height="${FTP}" fill="#1a5c2a"/>`;
+  h+=`<text x="${W/2}" y="27" text-anchor="middle" fill="white" font-size="13" font-family="'DM Serif Display',serif" font-style="italic">Future State Process Map — AutoVault AI-First (11 Steps)</text>`;
+  Object.entries(FLANES).forEach(([k,lane])=>{
+    h+=`<rect x="${FHW}" y="${lane.yTop}" width="${W-FHW}" height="${FLH}" fill="${lane.bg}" stroke="${lane.color}" stroke-width="0.4" opacity="0.5"/>`;
+    h+=`<rect x="0" y="${lane.yTop}" width="${FHW}" height="${FLH}" fill="${lane.color}"/>`;
+    const ls=lane.label.split('\n'), midY=lane.yTop+FLH/2;
+    ls.forEach((l,i)=>{const ty=midY-(ls.length-1)*7+i*14+4; h+=`<text x="${FHW/2}" y="${ty}" text-anchor="middle" fill="white" font-size="10.5" font-family="Inter,sans-serif" font-weight="600">${l}</text>`;});
+  });
+  for(let c=1;c<=11;c++){const lx=FHW+(c-1)*FCW; h+=`<line x1="${lx}" y1="${FTP}" x2="${lx}" y2="${H-4}" stroke="#CBD5E1" stroke-width="0.5" stroke-dasharray="3 4" opacity="0.5"/>`;}
+  const sm={};FSTEPS.forEach(s=>{sm[s.id]=s;});
+  FCONNS.forEach(([fId,tId])=>{
+    const f=sm[fId],t=sm[tId];if(!f||!t)return;
+    const fr=frect(f),tr=frect(t);
+    let d='';
+    if(f.lane===t.lane){d=`M${fr.x+FSW},${fr.cy} L${tr.x},${tr.cy}`;}
+    else{const x1=fr.x+FSW,y1=fr.cy,x2=tr.x,y2=tr.cy,mx=x1+(x2-x1)*0.5;d=`M${x1},${y1} L${mx},${y1} L${mx},${y2} L${x2},${y2}`;}
+    h+=`<path d="${d}" fill="none" stroke="#2f9e44" stroke-width="2" marker-end="url(#far)"/>`;
+  });
+  FSTEPS.forEach(s=>{
+    const r=frect(s),c=FCAT[s.cat];
+    h+=`<rect x="${r.x}" y="${r.y}" width="${FSW}" height="${FSH}" rx="8" fill="${c.f}" stroke="${c.s}" stroke-width="${c.sw}"/>`;
+    const lh=13,tot=s.lines.length*lh;
+    s.lines.forEach((l,i)=>{const ty=r.cy-tot/2+i*lh+9;h+=`<text x="${r.cx}" y="${ty}" text-anchor="middle" fill="${c.t}" font-size="9.5" font-family="Inter,sans-serif" font-weight="${i===0?'700':'400'}">${l}</text>`;});
+  });
+  svg.innerHTML=h;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CURRENT STATE DATA: PAIN TABLE
+// ═══════════════════════════════════════════════════════════════════
+const PAIN=[
+  {step:'1',  actor:'Customer', cat:'b-gap',    desc:'Browse printed catalog — no digital search, no live stock view; catalog may be stale or only available in-office.',impact:'Limits reach; customer friction from first touch'},
+  {step:'2',  actor:'Staff',    cat:'b-orange', desc:'Walk to the garage to physically check stock — no real-time inventory system.',impact:'Wasted staff time; availability data immediately stale'},
+  {step:'3',  actor:'Staff',    cat:'b-orange', desc:'Separate Excel database checked alongside garage walk — duplicate source of truth, desync risk.',impact:'Over-selling risk; data inconsistency between systems'},
+  {step:'4',  actor:'Staff',    cat:'b-red',    desc:'Edit a prior customer\'s Word document to reuse it — personal data contamination.',impact:'Active GDPR violation (Art. 5, 25); regulatory fine risk'},
+  {step:'5',  actor:'Staff',    cat:'b-grey',   desc:'Print and manually stamp the order document — no digital equivalent or version control.',impact:'Forgeable; no audit trail; human error risk'},
+  {step:'6',  actor:'SC/Legal', cat:'b-gap',    desc:'Vehicle manufactured — customer has zero visibility into timeline or delay notifications.',impact:'Poor CX; reactive support calls from waiting customers'},
+  {step:'7',  actor:'Customer', cat:'b-gap',    desc:'First payment step labelled [Unknown] — payment method, confirmation mechanism, and failure path all undefined.',impact:'Revenue at risk; no audit trail if payment disputes arise'},
+  {step:'8',  actor:'Staff',    cat:'b-orange', desc:'First invoice created manually in Excel — no standardised template or VAT automation.',impact:'Error-prone; inconsistent invoices; VAT miscalculation risk'},
+  {step:'9',  actor:'Staff',    cat:'b-gap',    desc:'Staff emails customer to schedule in-person visit — no self-serve booking, no automated reminder.',impact:'Scheduling delays; no-show risk; avoidable staff overhead'},
+  {step:'10', actor:'Customer', cat:'b-red',    desc:'Contract must be signed in person — remote or international customers completely blocked.',impact:'Customer attrition; geographic exclusion from sales pipeline'},
+  {step:'10b',actor:'SC/Legal', cat:'b-dead',   desc:'Dispute resolution has no SLA, escalation owner, or re-entry point to main flow.',impact:'Order stalls indefinitely; no outcome tracking'},
+  {step:'11', actor:'Customer', cat:'b-gap',    desc:'Customer must physically bring trade-in vehicle — no remote option or pre-assessment tool.',impact:'Customer friction; trade-in leads lost to convenience-seeking buyers'},
+  {step:'12', actor:'Staff',    cat:'b-gap',    desc:'Trade-in assessment is ad hoc — no standardised criteria, scoring rubric, or digital record.',impact:'Inconsistent valuations; margin risk; dispute liability'},
+  {step:'13', actor:'Staff',    cat:'b-red',    desc:'Second instance of editing a prior customer\'s Word document — same GDPR breach repeated.',impact:'GDPR violation; systemic data governance failure'},
+  {step:'14', actor:'Customer', cat:'b-red',    desc:'Customer\'s second in-person visit — required solely to hand over trade-in documents.',impact:'Unnecessary friction; high attrition risk at this step'},
+  {step:'15', actor:'Customer', cat:'b-red',    desc:'Third visit — must return 2 days later just to sign trade-in paperwork.',impact:'Worst-in-class UX; 3 office visits before delivery'},
+  {step:'16', actor:'Staff',    cat:'b-yellow', desc:'Signed documents scanned as static images — not searchable, not OCR-readable, not auditable.',impact:'No digital searchability; compliance retrieval risk'},
+  {step:'17', actor:'Staff',    cat:'b-yellow', desc:'Documents printed, stamped, and filed physically — at risk of loss, fire, or flood.',impact:'Disaster recovery risk; retrieval friction; no backup'},
+  {step:'18', actor:'Staff',    cat:'b-gap',    desc:'Delivery date confirmed by phone — synchronous, no audit trail, no automated confirmation.',impact:'Staff time waste; no record if call is missed'},
+  {step:'19', actor:'Staff',    cat:'b-gap',    desc:'Final payment also labelled [Unknown] — same undocumented problem as Step 7.',impact:'Delivery may proceed without confirmed payment clearance'},
+  {step:'20', actor:'Staff',    cat:'b-orange', desc:'Second Excel invoice created manually — identical to Step 8, no link between invoices.',impact:'Double the error surface; no reconciliation'},
+  {step:'21', actor:'Staff',    cat:'b-red',    desc:'Third instance of editing a prior customer\'s Word document — now systemic.',impact:'Ongoing data breach liability; regulatory enforcement risk'},
+  {step:'22', actor:'Staff',    cat:'b-gap',    desc:'Vehicle delivered but no formal handover certificate or digital sign-off captured.',impact:'No proof of delivery; dispute exposure; warranty ambiguity'},
+  {step:'23', actor:'Staff',    cat:'b-gap',    desc:'Post-delivery support is undefined — no ticketing system, SLA, or escalation path.',impact:'Customer experience ends in a black hole after delivery'},
+  {step:'24', actor:'Staff',    cat:'b-yellow', desc:'Postal feedback form mailed — approximately 2% response rate returns no meaningful signal.',impact:'98% of customer experience data permanently lost'},
+];
+const ROWBG={'b-red':'#fff5f5','b-orange':'#fff8f0','b-yellow':'#fffce6','b-dead':'#fff5f5','b-grey':'#FFF9F0','b-gap':'#f0f6ff'};
+const BL={'b-red':'GDPR / Visit','b-orange':'Manual / Disconnected','b-yellow':'Paper / Low-Value','b-dead':'Dead End','b-grey':'Standard','b-gap':'Process Gap'};
+const tp=document.getElementById('tbodyPain');
+PAIN.forEach(r=>{ tp.innerHTML+=`<tr style="background:${ROWBG[r.cat]};border-bottom:1px solid #E8EEF7;"><td style="padding:11px 16px;font-weight:700;color:#081F5C;font-size:12px;">${r.step}</td><td style="padding:11px 16px;font-size:12px;color:#334EAC;font-weight:600;">${r.actor}</td><td style="padding:11px 16px;"><span class="badge ${r.cat}">${BL[r.cat]}</span></td><td style="padding:11px 16px;font-size:12px;color:#1a2a4a;line-height:1.55;">${r.desc}</td><td style="padding:11px 16px;font-size:12px;color:#334EAC;line-height:1.55;font-style:italic;">${r.impact}</td></tr>`; });
+
+// ── DEAD ENDS ──────────────────────────────────────────────────────
+const DEAD=[
+  {badge:'DEAD END',title:'Step 10b — Dispute Resolution',body:'Triggered when a customer disputes a clause at the in-person signing. No escalation owner, no SLA, no re-entry path.',result:'Customer left waiting indefinitely. Order stalls with no outcome tracking.',bc:'#c92a2a',bg:'#fff0f0',tb:'#ffc9c9',tc:'#7b1f1f'},
+  {badge:'DEAD END',title:'Steps 7 & 19 — Unknown Payments',body:'Both payments labelled [Unknown]. No defined method, no confirmation webhook, no failure handling. If rejected, no next step exists.',result:'Revenue unprotected. Staff must chase manually. Delivery may proceed unpaid.',bc:'#c92a2a',bg:'#fff0f0',tb:'#ffc9c9',tc:'#7b1f1f'},
+  {badge:'CLOSED LOOP MISSING',title:'Step 24 — Postal Feedback (~2%)',body:'Process ends by mailing a paper form. ~2% response returns no statistically useful signal. No NPS tracking, no digital aggregation.',result:'98% of customer experience data permanently lost. No basis for improvement.',bc:'#d9a800',bg:'#fffbe8',tb:'#fff3bf',tc:'#6b5000'},
+];
+const dc=document.getElementById('deadEndCards');
+DEAD.forEach(d=>{dc.innerHTML+=`<div style="background:#FFF9F0;border-radius:14px;padding:26px;border:1.5px dashed ${d.bc};box-shadow:0 4px 18px -4px ${d.bc}22;"><div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;"><span style="background:${d.tb};color:${d.tc};border:1px dashed ${d.bc};font-size:11px;font-weight:700;padding:3px 9px;border-radius:4px;">${d.badge}</span><span style="font-weight:700;color:#081F5C;font-size:14px;">${d.title}</span></div><p style="font-size:13px;color:#334EAC;line-height:1.65;margin-bottom:14px;">${d.body}</p><div style="font-size:12px;color:${d.tc};background:${d.bg};border-radius:7px;padding:10px 14px;line-height:1.5;"><strong>Result:</strong> ${d.result}</div></div>`; });
+
+// ── AUTOMATION MATRIX ──────────────────────────────────────────────
+const AUTO=[
+  {steps:'1 — Printed Catalog',         problem:'Stale, in-office only, no digital search',                  target:'Live portal catalog with search & filter',                tool:'Portal frontend'},
+  {steps:'2+3 — Garage walk + Excel',   problem:'Dual disconnected systems, manual check',                    target:'inventory_manager.py → reserve_vehicle()',                 tool:'Automated real-time'},
+  {steps:'4+13+21 — GDPR Word edits',   problem:'Prior customer data reused — active GDPR breach ×3',        target:'document_generator.py generates fresh doc per order',       tool:'Claude API'},
+  {steps:'5 — Print + stamp',           problem:'Manual document, no audit trail, forgeable',                 target:'Auto-generated HTML contract with order ID',               tool:'document_generator.py'},
+  {steps:'7+19 — Unknown payments',     problem:'Undefined method, no audit trail, no failure path',          target:'Defined trigger → invoice auto-generation + receipt',       tool:'invoice_generator.py'},
+  {steps:'8+20 — Dual Excel invoices',  problem:'Manual, error-prone, no reconciliation',                     target:'create_invoice("first") + create_invoice("final")',         tool:'invoice_generator.py'},
+  {steps:'9 — Email to visit',          problem:'Scheduling friction, no self-serve',                         target:'Automated order_confirmed notification',                    tool:'notification_sender.py'},
+  {steps:'10 — In-person contract',     problem:'Office visit mandatory, blocks remote customers',            target:'Digital contract + e-signature link sent by email',         tool:'document_generator.py'},
+  {steps:'10b — Dispute dead end',      problem:'No SLA, no escalation owner, no return path',               target:'Legal escalation handler + status tracking',                tool:'Workflow edge case'},
+  {steps:'11+14+15 — Three visits',     problem:'3 in-person visits for trade-in alone',                      target:'Portal upload + remote assessment; visits eliminated',      tool:'trade_in_assessor.py'},
+  {steps:'16+17 — Scan + physical file',problem:'Paper archival risk, not searchable',                        target:'All documents digital from generation',                     tool:'Document pipeline'},
+  {steps:'18 — Phone confirmation',     problem:'Synchronous, no record if missed',                           target:'delivery_scheduled automated notification',                 tool:'notification_sender.py'},
+  {steps:'22 — No handover cert',       problem:'No proof of delivery, no sign-off',                          target:'generate_delivery_note() + tablet signature',              tool:'document_generator.py'},
+  {steps:'24 — Postal (~2%)',           problem:'Near-zero response; no closed loop',                         target:'NPS email with 0–10 rating buttons, 48h post-delivery',    tool:'notification_sender.py'},
+];
+const ta=document.getElementById('tbodyAuto');
+AUTO.forEach((r,i)=>{const bg=i%2===0?'#FFF9F0':'#F7F2EB';ta.innerHTML+=`<tr style="background:${bg};border-bottom:1px solid #E8EEF7;"><td style="padding:11px 16px;font-weight:700;color:#081F5C;font-size:12px;">${r.steps}</td><td style="padding:11px 16px;font-size:12px;color:#1a2a4a;line-height:1.55;">${r.problem}</td><td style="padding:11px 16px;font-size:12px;color:#334EAC;font-weight:500;line-height:1.55;">${r.target}</td><td style="padding:11px 16px;"><code style="font-size:11px;background:#D0E3FF;color:#081F5C;padding:2px 7px;border-radius:4px;">${r.tool}</code></td></tr>`; });
+
+// ── BEFORE / AFTER ─────────────────────────────────────────────────
+const CMP=[
+  {label:'Total process steps',      before:'24',   after:'11'},
+  {label:'Customer visits required', before:'5+',   after:'1'},
+  {label:'GDPR violations',          before:'3',    after:'0'},
+  {label:'Dead ends',                before:'1',    after:'0'},
+  {label:'Customer feedback rate',   before:'~2%',  after:'NPS (100%)'},
+  {label:'Paper-dependent steps',    before:'5+',   after:'0'},
+  {label:'Payment auditability',     before:'None', after:'Full audit trail'},
+];
+const br=document.getElementById('beforeRows'),ar=document.getElementById('afterRows');
+CMP.forEach(r=>{
+  br.innerHTML+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#fff5f5;border-radius:8px;border:1px solid #ffc9c9;"><span style="font-size:13px;color:#081F5C;font-weight:500;">${r.label}</span><span style="font-size:19px;font-family:'DM Serif Display',serif;color:#c92a2a;">${r.before}</span></div>`;
+  ar.innerHTML+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:rgba(255,255,255,0.08);border-radius:8px;border:1px solid rgba(186,214,235,0.2);"><span style="font-size:13px;color:#BAD6EB;font-weight:500;">${r.label}</span><span style="font-size:19px;font-family:'DM Serif Display',serif;color:#fff;">${r.after}</span></div>`;
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// FUTURE STATE DATA
+// ═══════════════════════════════════════════════════════════════════
+const FDATA=[
+  {step:'1', actor:'Customer',  type:'b-human', action:'Customer submits order via the digital portal — selects vehicle, financing type, and trade-in flag.', tool:'Portal form → order_manager.py → create_order()', replaces:'Step 1 (Printed Catalog)'},
+  {step:'2', actor:'System',   type:'b-auto',  action:'Triggered automatically on order creation. Checks available stock and reserves 1 unit.', tool:'inventory_manager.py → reserve_vehicle()', replaces:'Steps 2+3 (Garage walk + Excel)'},
+  {step:'3', actor:'System',   type:'b-auto',  action:'Triggered on inventory reserved. Sends branded HTML confirmation email with Order ID.', tool:'notification_sender.py → "order_confirmed"', replaces:'Step 9 (Email to visit)'},
+  {step:'4', actor:'System',   type:'b-auto',  action:'Generates first payment invoice (10% deposit default) with VAT breakdown and emails to customer.', tool:'invoice_generator.py → create_invoice(order_id, "first")', replaces:'Steps 7+8 (Unknown payment + Excel invoice)'},
+  {step:'5', actor:'System',   type:'b-ai',    action:'On first payment received, Claude API generates full personalised sales contract from scratch (no prior customer data). Sends secure e-signature link.', tool:'document_generator.py → generate_sales_contract() via Claude API', replaces:'Steps 4+5+10 (GDPR Word edits + stamp + in-person signing)'},
+  {step:'6', actor:'Customer', type:'b-human', action:'Customer reviews and signs digital contract via e-signature link. Can be done remotely on any device.', tool:'E-signature webhook → status: contract_signed', replaces:'Step 10 (Mandatory in-person visit)'},
+  {step:'7', actor:'SC/Legal', type:'b-sclegal',action:'Vehicle sourced or manufactured. System tracks status and auto-notifies customer on milestone changes.', tool:'Status tracking → notification on ready_for_delivery', replaces:'Step 6 (Opaque manufacturing step)'},
+  {step:'8', actor:'System',   type:'b-auto',  action:'Vehicle ready triggers automated delivery scheduling notification with proposed date and confirmation link.', tool:'order_manager.py → update_order_field("delivery_date") + notification_sender.py', replaces:'Step 18 (Phone confirmation)'},
+  {step:'9', actor:'System',   type:'b-auto',  action:'On delivery day confirmed, generates final invoice for remaining balance and emails customer.', tool:'invoice_generator.py → create_invoice(order_id, "final")', replaces:'Steps 19+20+21 (Unknown payment + 2nd Excel invoice + GDPR Word edit)'},
+  {step:'10',actor:'Customer', type:'b-human', action:'Vehicle delivered. Customer signs digital delivery note on tablet at handover. Only in-person touchpoint in entire process.', tool:'document_generator.py → generate_delivery_note() + tablet sign', replaces:'Steps 11+12+13+14+15+16+17+22 (All trade-in visits + paper filing + delivery)'},
+  {step:'11',actor:'System',   type:'b-auto',  action:'48 hours after delivery, automated NPS survey sent with 0–10 rating buttons. Responses captured in analytics dashboard.', tool:'notification_sender.py → "feedback_request" → analytics', replaces:'Step 24 (Postal feedback at ~2%)'},
+];
+const FROWBG={'b-auto':'#f0fff4','b-ai':'#f5f0ff','b-human':'#f0f6ff','b-sclegal':'#fdf4ff'};
+const FBL={'b-auto':'Automated','b-ai':'AI-Generated','b-human':'Customer','b-sclegal':'SC / Legal'};
+const tf=document.getElementById('tbodyFuture');
+FDATA.forEach((r,i)=>{
+  tf.innerHTML+=`<tr style="background:${FROWBG[r.type]};border-bottom:1px solid #E8EEF7;">
+    <td style="padding:11px 16px;font-weight:700;color:#081F5C;font-size:12px;">${r.step}</td>
+    <td style="padding:11px 16px;font-size:12px;color:#334EAC;font-weight:600;">${r.actor}</td>
+    <td style="padding:11px 16px;"><span class="badge ${r.type}">${FBL[r.type]}</span></td>
+    <td style="padding:11px 16px;font-size:12px;color:#1a2a4a;line-height:1.55;">${r.action}</td>
+    <td style="padding:11px 16px;"><code style="font-size:10px;background:#D0E3FF;color:#081F5C;padding:2px 6px;border-radius:4px;line-height:1.7;display:inline-block;">${r.tool}</code></td>
+    <td style="padding:11px 16px;font-size:12px;color:#7096D1;line-height:1.55;font-style:italic;">${r.replaces}</td>
+  </tr>`;
+});
+
+// ── ELIMINATED CARDS ───────────────────────────────────────────────
+const ELIM=[
+  {icon:'🔒',title:'GDPR Violations Eliminated',count:'3 steps',steps:'Steps 4, 13, 21',detail:'All three Word-document reuse steps removed. Contracts now generated fresh per order by the Claude API using only the current customer\'s data.',color:'#c92a2a',bg:'#fff5f5',border:'#ffc9c9'},
+  {icon:'🚶',title:'Customer Visits Eliminated',count:'4 of 5 visits',steps:'Steps 10, 14, 15 + trade-in',detail:'Contract signing is now digital (e-signature). Trade-in documents submitted via portal. Only the final delivery visit remains — by design.',color:'#e67700',bg:'#fff8f0',border:'#ffe8cc'},
+  {icon:'📄',title:'Paper Steps Eliminated',count:'5 steps',steps:'Steps 5, 16, 17 + stamp + file',detail:'Print, stamp, scan, and physical filing all removed. Every document is generated digitally and stored electronically from creation.',color:'#d9a800',bg:'#fffce6',border:'#fff3bf'},
+  {icon:'📊',title:'Manual Invoicing Eliminated',count:'2 steps → 0',steps:'Steps 8, 20',detail:'Both Excel invoices replaced by automated invoice_generator.py. Correct VAT, consistent format, and full audit trail on every order.',color:'#334EAC',bg:'#f0f4ff',border:'#D0E3FF'},
+  {icon:'☎️',title:'Synchronous Comms Eliminated',count:'2 steps',steps:'Steps 9, 18',detail:'Email-to-visit and phone-confirmation calls replaced by automated digital notifications with self-serve links and confirmation tracking.',color:'#7096D1',bg:'#f0f6ff',border:'#D0E3FF'},
+  {icon:'❓',title:'Undefined Paths Resolved',count:'3 dead ends',steps:'Steps 7, 10b, 19',detail:'Unknown payment steps now have defined triggers, invoices, and failure paths. Dispute resolution has an SLA and escalation owner in the workflow.',color:'#7e22ce',bg:'#fdf4ff',border:'#e0d7ff'},
+];
+const ec=document.getElementById('eliminatedCards');
+ELIM.forEach(e=>{ec.innerHTML+=`<div style="background:#FFF9F0;border-radius:14px;padding:24px;border:1px solid ${e.border};box-shadow:0 4px 16px -4px rgba(8,31,92,0.08);"><div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;"><span style="font-size:22px;">${e.icon}</span><div><div style="font-weight:700;color:#081F5C;font-size:14px;">${e.title}</div><div style="font-size:11px;font-weight:700;color:${e.color};margin-top:1px;">${e.count} · ${e.steps}</div></div></div><p style="font-size:12px;color:#334EAC;line-height:1.65;">${e.detail}</p></div>`; });
+
+// ── ERROR HANDLING TABLE ───────────────────────────────────────────
+const ERRS=[
+  {error:'Inventory unavailable',    action:'Return 409 Conflict; customer placed on order queue with estimated delivery_weeks_order',   prev:'No-stock not handled — order taken anyway'},
+  {error:'Contract dispute',         action:'Pause workflow; escalate to legal team with order ID and clause reference; customer notified',prev:'Dead end — Step 10b with no defined path'},
+  {error:'Payment failure',          action:'Notify customer; hold delivery; retry once; alert sales exec after 3 failures',              prev:'[Unknown] — no defined failure path'},
+  {error:'Claude API timeout',       action:'Retry once with exponential backoff; fall back to static template contract; alert IT',       prev:'N/A — no AI document generation existed'},
+  {error:'Email delivery failure',   action:'Log warning; retry once; alert sales exec if 3 consecutive failures',                        prev:'No tracking — failure silently ignored'},
+  {error:'Vehicle ID not found',     action:'Return 404; log error; notify staff for manual verification',                                 prev:'Staff discovers mismatch during garage walk'},
+];
+const te=document.getElementById('tbodyErrors');
+ERRS.forEach((r,i)=>{const bg=i%2===0?'#FFF9F0':'#F7F2EB';te.innerHTML+=`<tr style="background:${bg};border-bottom:1px solid #E8EEF7;"><td style="padding:11px 16px;font-weight:700;color:#081F5C;font-size:12px;">${r.error}</td><td style="padding:11px 16px;font-size:12px;color:#1a5c2a;line-height:1.55;font-weight:500;">${r.action}</td><td style="padding:11px 16px;font-size:12px;color:#c92a2a;line-height:1.55;font-style:italic;">${r.prev}</td></tr>`; });
+
+</script>
+</body>
+</html>
