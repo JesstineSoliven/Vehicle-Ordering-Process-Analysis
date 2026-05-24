@@ -629,36 +629,79 @@ CMP.forEach(r=>{
 // FUTURE STATE DATA
 // ═══════════════════════════════════════════════════════════════════
 const FDATA=[
-  {step:'1', actor:'Customer',  type:'b-human',  action:'Customer submits order via the digital portal — selects vehicle, financing type, and trade-in flag.', tool:'Portal form → order_manager.py → create_order()', platform:'pa',  platformDetail:'Automated Cloud Flow — HTTP trigger on form submit → parse JSON → call order API', replaces:'Step 1 (Printed Catalog)'},
-  {step:'2', actor:'System',   type:'b-auto',   action:'Triggered automatically on order creation. Checks available stock and reserves 1 unit.', tool:'inventory_manager.py → reserve_vehicle()', platform:'pa',  platformDetail:'Automated Cloud Flow — HTTP action to inventory API; update record on success / 409 branches to queue', replaces:'Steps 2+3 (Garage walk + Excel)'},
-  {step:'3', actor:'System',   type:'b-auto',   action:'Triggered on inventory reserved. Sends branded HTML confirmation email with Order ID.', tool:'notification_sender.py → "order_confirmed"', platform:'pa',  platformDetail:'Office 365 Outlook / SendGrid connector — Send Email action with HTML body template', replaces:'Step 9 (Email to visit)'},
-  {step:'4', actor:'System',   type:'b-auto',   action:'Generates first payment invoice (10% deposit default) with VAT breakdown and emails to customer.', tool:'invoice_generator.py → create_invoice(order_id, "first")', platform:'pa',  platformDetail:'Automated Cloud Flow — compose HTML invoice → Create file (OneDrive/SharePoint) → Send Email with PDF attachment', replaces:'Steps 7+8 (Unknown payment + Excel invoice)'},
-  {step:'5', actor:'System',   type:'b-ai',     action:'On first payment received, Claude API generates full personalised sales contract from scratch (no prior customer data). Sends secure e-signature link.', tool:'document_generator.py → generate_sales_contract() via Claude API', platform:'pa',  platformDetail:'HTTP action → Claude API (claude-sonnet-4-6) → Adobe Sign / DocuSign connector to send for e-signature', replaces:'Steps 4+5+10 (GDPR Word edits + stamp + in-person signing)'},
-  {step:'6', actor:'Customer', type:'b-human',  action:'Customer reviews and signs digital contract via e-signature link. Can be done remotely on any device.', tool:'E-signature webhook → status: contract_signed', platform:'pa',  platformDetail:'Adobe Sign / DocuSign connector — When agreement signed trigger → update order status via HTTP action', replaces:'Step 10 (Mandatory in-person visit)'},
-  {step:'7', actor:'SC/Legal', type:'b-sclegal',action:'Vehicle sourced or manufactured. System tracks status and auto-notifies customer on milestone changes.', tool:'Status tracking → notification on ready_for_delivery', platform:'aa',  platformDetail:'Automation Anywhere Bot — polls ERP/DMS for production milestones; triggers PA flow on status change', replaces:'Step 6 (Opaque manufacturing step)'},
-  {step:'8', actor:'System',   type:'b-auto',   action:'Vehicle ready triggers automated delivery scheduling notification with proposed date and confirmation link.', tool:'order_manager.py → update_order_field("delivery_date") + notification_sender.py', platform:'pa',  platformDetail:'Automated Cloud Flow — triggered by status change; Outlook connector sends scheduling email with approval buttons', replaces:'Step 18 (Phone confirmation)'},
-  {step:'9', actor:'System',   type:'b-auto',   action:'On delivery day confirmed, generates final invoice for remaining balance and emails customer.', tool:'invoice_generator.py → create_invoice(order_id, "final")', platform:'pa',  platformDetail:'Automated Cloud Flow — same invoice pattern as Step 4; HTTP call to payment gateway for confirmation receipt', replaces:'Steps 19+20+21 (Unknown payment + 2nd Excel invoice + GDPR Word edit)'},
-  {step:'10',actor:'Customer', type:'b-human',  action:'Vehicle delivered. Customer signs digital delivery note on tablet at handover. Only in-person touchpoint in entire process.', tool:'document_generator.py → generate_delivery_note() + tablet sign', platform:'papp', platformDetail:'Power Apps — tablet canvas app renders delivery note; Ink control captures digital signature; data saved to Dataverse', replaces:'Steps 11+12+13+14+15+16+17+22 (All trade-in visits + paper filing + delivery)'},
-  {step:'11',actor:'System',   type:'b-auto',   action:'48 hours after delivery, automated NPS survey sent with 0–10 rating buttons. Responses captured in analytics dashboard.', tool:'notification_sender.py → "feedback_request" → analytics', platform:'pa',  platformDetail:'Scheduled Cloud Flow — 48h delay action → Send Email with rating links; response captured via HTTP trigger back into flow', replaces:'Step 24 (Postal feedback at ~2%)'},
+  {step:'1', actor:'Customer',  type:'b-human',  action:'Customer submits order via the digital portal — selects vehicle, financing type, and trade-in flag.', tool:'Portal form → order_manager.py → create_order()',
+   platforms:[
+     {p:'py', note:'Flask/FastAPI endpoint — receives POST, validates fields, writes to orders.json'},
+     {p:'pa', note:'Power Automate — HTTP trigger on form submit → parse JSON → call order API'},
+   ], replaces:'Step 1 (Printed Catalog)'},
+  {step:'2', actor:'System',   type:'b-auto',   action:'Triggered automatically on order creation. Checks available stock and reserves 1 unit.', tool:'inventory_manager.py → reserve_vehicle()',
+   platforms:[
+     {p:'py', note:'inventory_manager.py — reads vehicles.json, reserves unit, writes to reservations.json'},
+     {p:'pa', note:'Power Automate — HTTP connector to inventory API; branches on 409 to order queue'},
+   ], replaces:'Steps 2+3 (Garage walk + Excel)'},
+  {step:'3', actor:'System',   type:'b-auto',   action:'Triggered on inventory reserved. Sends branded HTML confirmation email with Order ID.', tool:'notification_sender.py → "order_confirmed"',
+   platforms:[
+     {p:'py', note:'notification_sender.py — smtplib or SendGrid SDK with HTML template'},
+     {p:'pa', note:'Power Automate — Office 365 Outlook / SendGrid connector, Send Email action'},
+   ], replaces:'Step 9 (Email to visit)'},
+  {step:'4', actor:'System',   type:'b-auto',   action:'Generates first payment invoice (10% deposit default) with VAT breakdown and emails to customer.', tool:'invoice_generator.py → create_invoice(order_id, "first")',
+   platforms:[
+     {p:'py', note:'invoice_generator.py — Jinja2 template → WeasyPrint PDF → emailed as attachment'},
+     {p:'pa', note:'Power Automate — compose HTML invoice → Create file → Send Email with attachment'},
+   ], replaces:'Steps 7+8 (Unknown payment + Excel invoice)'},
+  {step:'5', actor:'System',   type:'b-ai',     action:'On first payment received, Claude API generates full personalised sales contract from scratch. Sends secure e-signature link.', tool:'document_generator.py → generate_sales_contract() via Claude API',
+   platforms:[
+     {p:'py', note:'document_generator.py — anthropic SDK, cached system prompt, output pushed to DocuSign/HelloSign API'},
+     {p:'pa', note:'Power Automate — HTTP action → Claude API → Adobe Sign / DocuSign connector'},
+   ], replaces:'Steps 4+5+10 (GDPR Word edits + stamp + in-person signing)'},
+  {step:'6', actor:'Customer', type:'b-human',  action:'Customer reviews and signs digital contract via e-signature link. Can be done remotely on any device.', tool:'E-signature webhook → status: contract_signed',
+   platforms:[
+     {p:'py', note:'Flask webhook endpoint receives signed event from DocuSign/HelloSign; updates order status'},
+     {p:'pa', note:'Power Automate — DocuSign/Adobe Sign connector, When agreement signed → update order'},
+   ], replaces:'Step 10 (Mandatory in-person visit)'},
+  {step:'7', actor:'SC/Legal', type:'b-sclegal',action:'Vehicle sourced or manufactured. System tracks status and auto-notifies customer on milestone changes.', tool:'Status tracking → notification on ready_for_delivery',
+   platforms:[
+     {p:'py',  note:'Python polling script — calls ERP REST API on schedule; triggers notification on status change'},
+     {p:'aa',  note:'Automation Anywhere — bot navigates ERP/DMS UI if no API is available'},
+     {p:'pa',  note:'Power Automate — ERP connector (SAP, D365 Supply Chain) if licensed'},
+   ], replaces:'Step 6 (Opaque manufacturing step)'},
+  {step:'8', actor:'System',   type:'b-auto',   action:'Vehicle ready triggers automated delivery scheduling notification with proposed date and confirmation link.', tool:'order_manager.py + notification_sender.py',
+   platforms:[
+     {p:'py', note:'notification_sender.py triggered on status → ready_for_delivery; confirm link updates delivery_date'},
+     {p:'pa', note:'Power Automate — triggered by status change; Outlook sends scheduling email with approval buttons'},
+   ], replaces:'Step 18 (Phone confirmation)'},
+  {step:'9', actor:'System',   type:'b-auto',   action:'On delivery day confirmed, generates final invoice for remaining balance and emails customer.', tool:'invoice_generator.py → create_invoice(order_id, "final")',
+   platforms:[
+     {p:'py', note:'invoice_generator.py — same pattern as Step 4, balance pulled from order record'},
+     {p:'pa', note:'Power Automate — compose final invoice → Send Email; HTTP call to payment gateway'},
+   ], replaces:'Steps 19+20+21 (Unknown payment + 2nd Excel invoice + GDPR Word edit)'},
+  {step:'10',actor:'Customer', type:'b-human',  action:'Vehicle delivered. Customer signs digital delivery note on tablet at handover. Only in-person touchpoint in entire process.', tool:'document_generator.py → generate_delivery_note() + tablet sign',
+   platforms:[
+     {p:'py',   note:'Flask page on tablet browser — HTML5 Canvas captures signature → base64 embedded in PDF'},
+     {p:'papp', note:'Power Apps — canvas app with Ink control; data saved to Dataverse'},
+   ], replaces:'Steps 11+12+13+14+15+16+17+22 (All visits + paper filing + delivery)'},
+  {step:'11',actor:'System',   type:'b-auto',   action:'48 hours after delivery, automated NPS survey sent with 0–10 rating buttons. Responses captured in analytics dashboard.', tool:'notification_sender.py → "feedback_request" → analytics',
+   platforms:[
+     {p:'py', note:'APScheduler or cron — fires 48h post delivery_date; signed token links track responses'},
+     {p:'pa', note:'Power Automate — scheduled flow with Delay action (48h) → Send Email with rating links'},
+   ], replaces:'Step 24 (Postal feedback at ~2%)'},
 ];
 const FROWBG={'b-auto':'#f0fff4','b-ai':'#f5f0ff','b-human':'#f0f6ff','b-sclegal':'#fdf4ff'};
 const FBL={'b-auto':'Automated','b-ai':'AI-Generated','b-human':'Customer','b-sclegal':'SC / Legal'};
 const PLATCFG={
-  pa:   {label:'Power Automate', bg:'#e8f3fc', border:'#0078D4', color:'#004578', dot:'#0078D4'},
+  py:   {label:'Python',              bg:'#edf7ed', border:'#2f9e44', color:'#1a5c2a', dot:'#2f9e44'},
+  pa:   {label:'Power Automate',      bg:'#e8f3fc', border:'#0078D4', color:'#004578', dot:'#0078D4'},
   aa:   {label:'Automation Anywhere', bg:'#fff4ec', border:'#FF6B35', color:'#7a2d0a', dot:'#FF6B35'},
-  papp: {label:'Power Apps',    bg:'#f3eef9', border:'#742774', color:'#3d0d3d', dot:'#742774'},
+  papp: {label:'Power Apps',          bg:'#f3eef9', border:'#742774', color:'#3d0d3d', dot:'#742774'},
 };
+function platBadge(key){ const c=PLATCFG[key]; return `<span style="display:inline-flex;align-items:center;gap:4px;background:${c.bg};border:1px solid ${c.border};color:${c.color};font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;white-space:nowrap;"><span style="width:5px;height:5px;border-radius:50%;background:${c.dot};flex-shrink:0;"></span>${c.label}</span>`; }
 const tf=document.getElementById('tbodyFuture');
 FDATA.forEach((r,i)=>{
-  const p=PLATCFG[r.platform]||null;
-  const platCell=p
-    ? `<div style="display:flex;flex-direction:column;gap:6px;">
-         <span style="display:inline-flex;align-items:center;gap:5px;background:${p.bg};border:1px solid ${p.border};color:${p.color};font-size:10px;font-weight:700;padding:3px 8px;border-radius:5px;width:fit-content;">
-           <span style="width:6px;height:6px;border-radius:50%;background:${p.dot};flex-shrink:0;"></span>${p.label}
-         </span>
-         <span style="font-size:10px;color:#5a6a8a;line-height:1.55;">${r.platformDetail}</span>
-       </div>`
-    : `<span style="font-size:11px;color:#aaa;">—</span>`;
+  const platCell=`<div style="display:flex;flex-direction:column;gap:7px;">${r.platforms.map(opt=>`
+    <div style="display:flex;flex-direction:column;gap:3px;">
+      ${platBadge(opt.p)}
+      <span style="font-size:10px;color:#5a6a8a;line-height:1.5;padding-left:2px;">${opt.note}</span>
+    </div>`).join('')}</div>`;
   tf.innerHTML+=`<tr style="background:${FROWBG[r.type]};border-bottom:1px solid #E8EEF7;">
     <td style="padding:11px 16px;font-weight:700;color:#081F5C;font-size:12px;">${r.step}</td>
     <td style="padding:11px 16px;font-size:12px;color:#334EAC;font-weight:600;">${r.actor}</td>
